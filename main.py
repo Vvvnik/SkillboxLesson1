@@ -1,43 +1,12 @@
 import nltk
 import random
+import json
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.model_selection import train_test_split
 
-BOT_CONFIG = {
-    'intents': {
-        'hello': {
-            'examples': ['Привет!', 'Здравсвуйте!))', 'Хай!!'],
-            'responses': ['Прив!', 'Хеллоу', 'Как жизнь?']
-        },
-        'bye': {
-            'examples': ['Пока!', 'До свиданья!', 'Увидимся!!'],
-            'responses': ['Чао!', 'Будь здоров', 'Сайонара']
-        },
-        'science': {
-            'examples': ['наука', 'исследования', 'учение'],
-            'responses': ['естествознание', 'образование', 'академия']
-        },
-        'century': {
-            'examples': ['век', 'эра', 'время'],
-            'responses': ['вечность!', 'жизнь', 'бесконечность']
-        },
-        'ice': {
-            'examples': ['gtr', 'мороз', 'лед'],
-            'responses': ['зима', 'холодильник', 'заморозки']
-        },
-        'water': {
-            'examples': ['дождь', 'жидкость', 'кипяток'],
-            'responses': ['вода', 'пар', 'сырость']
-        },
-        'space': {
-            'examples': ['dsf', 'космос', 'вселенная'],
-            'responses': ['высота', 'высь', 'небосвод']
-        },
-        'auto': {
-            'examples': ['авто', 'машина', 'транспорт'],
-            'responses': ['автомобиль', 'автобус', 'доставка']
-        }
-    },
-    'default_answers': ['Извините, я тупой', 'Переформулируйте, меня еще не обучили']
-}  # "знания" бота
+with open('content/BIG_BOT_CONFIG.json', 'r') as f:
+    BOT_CONFIG = json.load(f) # читаем json в переменную BOT_CONFIG
 
 def cleaner(text): # функция очистки текста
     cleaned_text = ''
@@ -55,12 +24,41 @@ def get_intent(text): # функция определения интента т�
              if match(cleaner(text), cleaner(example)):
                   return intent
 
-def bot(text): # функция бота
-    intent = get_intent(text)  # 1. попытаться понять намерение
-    if intent is not None:
-        return random.choice(BOT_CONFIG['intents'][intent]['responses']) # 2. если удалось, ответить в соответствии намерением
-    else:
-        return random.choice(BOT_CONFIG['default_answers']) # 3. если не удалось, ответить заглушкой
+X = []
+y = []
+
+for intent in BOT_CONFIG['intents']:
+     if 'examples' in BOT_CONFIG['intents'][intent]:
+          X += BOT_CONFIG['intents'][intent]['examples']
+          y += [intent for i in range(len(BOT_CONFIG['intents'][intent]['examples']))]
+
+# Создаем обучающую выборку для ML-модели
+vectorizer = CountVectorizer(preprocessor=cleaner, ngram_range=(1,3), stop_words=['а', 'и'])
+# Создаем векторайзер – объект для превращения текста в вектора
+vectorizer.fit(X)
+X_vect = vectorizer.transform(X)
+# Обучаем векторайзер на нашей выборке
+X_train_vect, X_test_vect, y_train, y_test = train_test_split(X_vect, y, test_size=0.3)
+# Разбиваем выборку на train и на test
+sgd = SGDClassifier() # Создаем модель
+# sgd.fit(X_train_vect, y_train) # Обучаем модель
+# sgd.score(X_test_vect, y_test) # Проверяем качество модели на тестовой выборке
+
+sgd.fit(X_vect, y)
+
+sgd.score(X_vect, y) # Смотрим качество классификации
+
+def get_intent_by_model(text):  # Функция определяющая интент текста с помощью ML-модели
+    return sgd.predict(vectorizer.transform([text]))[0]
+
+
+def bot(text):  # функция бота
+    intent = get_intent(text)  # 1. попытаться понять намерение сравнением по Левинштейну
+
+    if intent is None:
+        intent = get_intent_by_model(text)  # 2. попытаться понять намерение с помощью ML-модели
+
+    return random.choice(BOT_CONFIG['intents'][intent]['responses'])
 
 question = ''
 while question not in ['выход', 'выключайся']:
